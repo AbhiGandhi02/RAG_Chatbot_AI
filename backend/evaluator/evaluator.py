@@ -81,13 +81,14 @@ def evaluate_response(
     
     # Flag 1: no_context — No relevant chunks were retrieved
     # pgvector always returns top-k results even if irrelevant, so we also
-    # check if all chunks have very low relevance scores (< 0.4)
+    # check if all chunks have very low relevance scores. Threshold is intentionally
+    # low (0.25) because short structured docs (CVs, etc.) often max out around 0.35–0.45.
     effectively_no_context = False
     if chunks_retrieved == 0:
         effectively_no_context = True
     elif retrieved_chunks:
         max_score = max((c.get("relevance_score", 0) for c in retrieved_chunks), default=0)
-        if max_score < 0.4:
+        if max_score < 0.25:
             effectively_no_context = True
     
     if effectively_no_context:
@@ -161,4 +162,4 @@ def get_warning_message(flags: List[str]) -> str:
         warnings.append("the documentation may contain conflicting information")
     
     warning_text = " and ".join(warnings)
-    return f"⚠️ Low confidence — {warning_text}. Please confirm with our support team."
+    return f"⚠️ Low confidence — {warning_text}."

@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClearPath Support Chat</title>
-    <meta name="description" content="ClearPath customer support chatbot — get instant answers from our documentation.">
+    <title>DocChat — Document Q&A</title>
+    <meta name="description" content="Upload your documents and chat with them — a NotebookLM-style RAG assistant.">
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -15,8 +15,8 @@
     <div id="authModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Welcome to ClearPath</h2>
-                <p>Sign in to access support and save your chat history.</p>
+                <h2>Welcome to DocChat</h2>
+                <p>Sign in to upload your documents and start asking questions.</p>
             </div>
             <div class="modal-body">
                 <button id="googleSignInBtn" class="auth-btn google-btn">
@@ -41,9 +41,9 @@
         <aside class="conversations-sidebar">
             <div class="sidebar-header">
                 <div class="logo">
-                    <div class="logo-icon">CP</div>
+                    <div class="logo-icon">DC</div>
                     <div>
-                        <h1>ClearPath</h1>
+                        <h1>DocChat</h1>
                     </div>
                 </div>
                 <button id="newChatBtn" class="new-chat-btn" title="New Chat">
@@ -100,7 +100,7 @@
             <div class="chat-messages" id="chatMessages">
                 <!-- Welcome message -->
                 <div class="message bot-message">
-                    <div class="message-avatar bot-avatar">CP</div>
+                    <div class="message-avatar bot-avatar">DC</div>
                     <div class="message-content">
                         <p>👋 Upload a PDF or text file using the sidebar, then ask questions about it.</p>
                         <p>All retrieval is grounded in your uploaded documents.</p>

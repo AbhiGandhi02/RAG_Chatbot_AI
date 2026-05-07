@@ -157,20 +157,19 @@ def create_routing_log(query: str, classification: str, model_used: str,
 
 
 if __name__ == "__main__":
-    # Test cases
+    # Sanity-check the router with a mix of simple/complex/greeting queries.
     test_queries = [
         "Hi!",
         "Hello, how are you?",
-        "What is ClearPath?",
-        "What is the price of the Pro plan?",
-        "How do I configure webhook integrations with Slack and what are the rate limits?",
-        "My dashboard is not working and I'm getting an error when I try to export reports. Can you help?",
+        "What is the main topic of this document?",
+        "Summarize the key points in one sentence.",
+        "How do I configure webhook integrations and what are the rate limits?",
+        "The system is throwing an error when I export reports — can you help me debug it?",
         "Thanks!",
-        "Explain the differences between the Pro and Enterprise plans and how to migrate between them",
-        "Is ClearPath free?",
+        "Compare the two approaches described and explain when each is appropriate.",
         "Why is the API returning 403 errors? I've tried multiple times and it's still broken.",
     ]
-    
+
     for q in test_queries:
         result = classify_query(q)
         print(f"\nQuery: \"{q}\"")

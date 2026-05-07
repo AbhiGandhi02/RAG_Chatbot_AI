@@ -1,8 +1,8 @@
 """
-ClearPath RAG Chatbot — FastAPI Application
+DocChat — NotebookLM-style RAG FastAPI application.
 
-Main entry point. Serves the POST /query endpoint and the frontend chat UI.
-Orchestrates: Router → Retriever → LLM → Evaluator → Response
+Main entry point. Serves the chat + upload endpoints and the frontend UI.
+Orchestrates: Router → Retriever (per-user + default corpus) → LLM → Evaluator → Response
 """
 
 import logging
@@ -89,8 +89,8 @@ async def lifespan(app):
 
 
 app = FastAPI(
-    title="ClearPath RAG Chatbot",
-    description="Customer support chatbot for ClearPath project management tool",
+    title="DocChat — NotebookLM-style RAG",
+    description="Upload your own documents and chat with them; falls back to a built-in default corpus.",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -475,7 +475,7 @@ async def serve_frontend():
     index_path = os.path.join(frontend_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"message": "ClearPath RAG API is running."}
+    return {"message": "DocChat RAG API is running."}
 
 @app.get("/health")
 async def health():

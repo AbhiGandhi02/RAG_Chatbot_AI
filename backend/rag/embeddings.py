@@ -65,19 +65,29 @@ class EmbeddingService:
             logger.info("Chunks successfully saved to PostgreSQL + pgvector.")
         return len(chunk_objects)
 
-# Optional: Keep a script entry point to easily index files from CLI
+# CLI: bulk-ingest a folder of PDFs as the global/default corpus (user_id IS NULL).
+# Usage: python -m backend.rag.embeddings <path-to-pdf-folder>
 if __name__ == "__main__":
     import asyncio
-    from backend.config import DOCS_DIR, CHUNK_SIZE, CHUNK_OVERLAP
+    import sys
+    import os
+    from backend.config import CHUNK_SIZE, CHUNK_OVERLAP
     from backend.rag.pdf_parser import extract_all_pdfs
     from backend.rag.chunker import chunk_pages
-    
+
+    if len(sys.argv) < 2:
+        print("Usage: python -m backend.rag.embeddings <path-to-pdf-folder>")
+        sys.exit(1)
+    folder = sys.argv[1]
+    if not os.path.isdir(folder):
+        print(f"Folder not found: {folder}")
+        sys.exit(1)
+
     async def run_ingestion():
-        print(f"Reading PDFs from {DOCS_DIR}")
-        pages = extract_all_pdfs(DOCS_DIR)
+        print(f"Reading PDFs from {folder}")
+        pages = extract_all_pdfs(folder)
         chunks = chunk_pages(pages, CHUNK_SIZE, CHUNK_OVERLAP)
-        
         svc = EmbeddingService()
         await svc.insert_chunks_to_db(chunks)
-        
+
     asyncio.run(run_ingestion())

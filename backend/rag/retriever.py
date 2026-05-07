@@ -31,7 +31,7 @@ class Retriever:
 
         Search scope:
           - Always include the default/global corpus (chunks with user_id IS NULL),
-            i.e. the pre-loaded ClearPath PDFs from `python -m backend.rag.embeddings`.
+            i.e. the pre-loaded PDFs ingested via `python -m backend.rag.embeddings`.
           - If `user_id` is provided, also include chunks owned by that user
             (their uploaded documents).
         """

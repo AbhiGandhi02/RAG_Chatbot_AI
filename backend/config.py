@@ -16,8 +16,10 @@ MODEL_COMPLEX = "llama-3.3-70b-versatile"
 # RAG Configuration
 CHUNK_SIZE = 500          # Target chunk size in characters
 CHUNK_OVERLAP = 100       # Overlap between chunks in characters
-TOP_K = 5                 # Number of chunks to retrieve
-SIMILARITY_THRESHOLD = 0.3  # Minimum similarity score to consider relevant
+TOP_K = 8                 # Number of chunks to retrieve
+SIMILARITY_THRESHOLD = 0.15  # Minimum similarity score; intentionally permissive so
+                              # short structured docs (CVs, resumes, single-pagers) where
+                              # headers split from content still surface useful chunks.
 
 # Paths
 DOCS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs")

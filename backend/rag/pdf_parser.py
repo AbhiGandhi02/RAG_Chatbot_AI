@@ -1,5 +1,5 @@
 """
-PDF Parser — Extracts text from all ClearPath documentation PDFs.
+PDF Parser — Extracts text from PDF documents (default corpus or user uploads).
 Preserves page numbers and document filenames for source tracking.
 """
 
@@ -95,8 +95,11 @@ def extract_all_pdfs(docs_dir: str) -> List[Dict]:
 
 
 if __name__ == "__main__":
-    from backend.config import DOCS_DIR
-    pages = extract_all_pdfs(DOCS_DIR)
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python -m backend.rag.pdf_parser <path-to-pdf-folder>")
+        sys.exit(1)
+    pages = extract_all_pdfs(sys.argv[1])
     for p in pages[:3]:
         print(f"\n--- {p['document']} (page {p['page']}) ---")
         print(p['text'][:200] + "...")

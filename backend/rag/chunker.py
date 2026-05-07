@@ -159,14 +159,23 @@ def load_chunks(chunks_path: str) -> List[Dict]:
 
 
 if __name__ == "__main__":
-    from backend.config import DOCS_DIR, CHUNKS_FILE, CHUNK_SIZE, CHUNK_OVERLAP
+    import sys
+    import os
+    from backend.config import CHUNKS_FILE, CHUNK_SIZE, CHUNK_OVERLAP
     from backend.rag.pdf_parser import extract_all_pdfs
-    
-    pages = extract_all_pdfs(DOCS_DIR)
+
+    if len(sys.argv) < 2:
+        print("Usage: python -m backend.rag.chunker <path-to-pdf-folder>")
+        sys.exit(1)
+    folder = sys.argv[1]
+    if not os.path.isdir(folder):
+        print(f"Folder not found: {folder}")
+        sys.exit(1)
+
+    pages = extract_all_pdfs(folder)
     chunks = chunk_pages(pages, CHUNK_SIZE, CHUNK_OVERLAP)
     save_chunks(chunks, CHUNKS_FILE)
-    
-    # Show sample chunks
+
     for c in chunks[:3]:
         print(f"\n--- Chunk {c['chunk_id']} ({c['document']}, p{c['page']}) ---")
         print(c['text'][:200] + "...")

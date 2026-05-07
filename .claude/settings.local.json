@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($root = \"C:\\\\Users\\\\abhig\\\\Documents\\\\RAG_Chatbot_AI\"; $files = @\\(\"bonus_challenges.md\",\"chunks.json\",\"eval_harness.py\",\"stream_output.txt\",\"streamed.txt\",\"written_answers.md\"\\); foreach \\($f in $files\\) { $p = Join-Path $root $f; if \\(Test-Path $p\\) { Remove-Item -Force $p; Write-Host \"deleted $f\" } else { Write-Host \"missing $f\" } }; $dirs = @\\(\"temp_repo\",\"docs\",\"data\"\\); foreach \\($d in $dirs\\) { $p = Join-Path $root $d; if \\(Test-Path $p\\) { Remove-Item -Recurse -Force $p; Write-Host \"deleted dir $d\" } else { Write-Host \"missing dir $d\" } })"
+    ]
+  }
+}

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # PostgreSQL Connection URL
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/clearpath_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/docchat_db")
 
 # Force asyncpg driver (Supabase gives postgresql:// by default, which causes the psycopg2 error)
 if DATABASE_URL.startswith("postgresql://"):

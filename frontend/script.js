@@ -270,7 +270,7 @@ async function selectConversation(convId) {
     // Clear chat area
     chatMessages.innerHTML = `
         <div class="message bot-message loading-message">
-            <div class="message-avatar bot-avatar">CP</div>
+            <div class="message-avatar bot-avatar">DC</div>
             <div class="message-content" style="padding:4px 12px">
                 <div class="loading-dots"><span></span><span></span><span></span></div>
             </div>
@@ -287,9 +287,9 @@ async function selectConversation(convId) {
         if (history.length === 0) {
             chatMessages.innerHTML = `
                 <div class="message bot-message">
-                    <div class="message-avatar bot-avatar">CP</div>
+                    <div class="message-avatar bot-avatar">DC</div>
                     <div class="message-content">
-                        <p>👋 Welcome to ClearPath Support! Ask me anything.</p>
+                        <p>👋 New chat. Ask me anything about your documents.</p>
                     </div>
                 </div>
             `;
@@ -343,7 +343,7 @@ function startNewConversation() {
     document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
     chatMessages.innerHTML = `
         <div class="message bot-message">
-            <div class="message-avatar bot-avatar">CP</div>
+            <div class="message-avatar bot-avatar">DC</div>
             <div class="message-content">
                 <p>👋 New chat started. How can I help you today?</p>
             </div>
@@ -611,7 +611,7 @@ function addMessage(text, sender, flags = [], skipScroll = false) {
 
     // Use Google profile picture if user, otherwise text
     if (sender === 'bot') {
-        avatar.textContent = 'CP';
+        avatar.textContent = 'DC';
     } else if (currentUser && currentUser.photoURL) {
         avatar.innerHTML = `<img src="${currentUser.photoURL}" alt="U" style="width:100%; height:100%; border-radius:50%;">`;
     } else {
@@ -646,7 +646,7 @@ function addLoadingMessage() {
 
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar bot-avatar';
-    avatar.textContent = 'CP';
+    avatar.textContent = 'DC';
 
     const content = document.createElement('div');
     content.className = 'message-content';
