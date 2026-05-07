@@ -22,3 +22,18 @@ Base = declarative_base()
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
+
+
+async def run_lightweight_migrations():
+    """Idempotently add columns introduced after the original schema."""
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "ALTER TABLE document_chunks "
+            "ADD COLUMN IF NOT EXISTS user_id VARCHAR "
+            "REFERENCES users(id) ON DELETE CASCADE"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_user_id "
+            "ON document_chunks (user_id)"
+        ))

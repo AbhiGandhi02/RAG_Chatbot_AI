@@ -1,11 +1,13 @@
-# ClearPath RAG Chatbot
+# NotebookLM-style RAG Chatbot
 
-A **Retrieval-Augmented Generation (RAG)** customer support chatbot for ClearPath, a project management platform. Built with FastAPI, PostgreSQL/pgvector, fastembed, and Groq LLM API.
+A **Retrieval-Augmented Generation (RAG)** chatbot in the spirit of Google NotebookLM. Signed-in users upload their own PDF / text documents; the system chunks, embeds, and stores them in a per-user pgvector index, then answers questions strictly grounded in those documents. Built with FastAPI, PostgreSQL/pgvector, fastembed, and the Groq LLM API.
 
 ## Architecture
 
 ```
-User Query → Router (classify) → Retriever (pgvector search) → LLM (Groq) → Evaluator → Response
+User uploads doc → Parser → Chunker → Embedder → pgvector (scoped by user_id)
+
+User Query → Router (classify) → Retriever (per-user pgvector search) → LLM (Groq) → Evaluator → Response
 ```
 
 ### Three-Layer Pipeline
@@ -82,11 +84,13 @@ FIREBASE_APP_ID=your_app_id
 
 2. Download your Firebase Admin SDK service account credentials and place the file in the root directory exactly named `serviceAccountKey.json`.
 
-### 3. Build the Database Vectors (first time only)
+### 3. Build the default vector index (first run only)
 
 ```bash
 python -m backend.rag.embeddings
 ```
+
+This ingests the 30 PDFs in `docs/` with `user_id = NULL`, which the retriever treats as a **global/default corpus** that's always available to every signed-in user.
 
 ### 4. Run the Server
 
@@ -94,11 +98,30 @@ python -m backend.rag.embeddings
 python -m backend.main
 ```
 
-Open **http://localhost:8000** in your browser.
+The server runs a lightweight migration on startup that adds the `user_id` column to `document_chunks` if needed — no manual SQL required.
+
+Open **http://localhost:8000** in your browser. Sign in with Google to chat against the default ClearPath corpus, and click **+ Upload** in the sidebar to add your own PDF / TXT / MD on top — uploaded documents are scoped to your account and merged into retrieval alongside the default corpus.
 
 ---
 
-## API Endpoint
+## API Endpoints
+
+### `POST /upload` (multipart/form-data, requires Bearer token)
+
+Upload a PDF / TXT / MD. The file is parsed, chunked (500 chars / 100 overlap), embedded, and indexed under the authenticated user's `user_id`.
+
+**Form field:** `file` — the document (max 15 MB)
+
+**Response:**
+```json
+{ "document": "policy.pdf", "chunks_indexed": 42, "pages": 11 }
+```
+
+### `GET /documents` (requires Bearer token)
+Returns the current user's uploaded documents and chunk counts.
+
+### `DELETE /documents/{document_name}` (requires Bearer token)
+Removes all chunks for that document for the current user.
 
 ### `POST /query`
 

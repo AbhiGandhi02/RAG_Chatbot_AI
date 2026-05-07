@@ -39,6 +39,12 @@ const newChatBtn = document.getElementById('newChatBtn');
 const conversationsList = document.getElementById('conversationsList');
 const debugContent = document.getElementById('debugContent');
 
+const documentsSection = document.getElementById('documentsSection');
+const uploadBtn = document.getElementById('uploadBtn');
+const uploadInput = document.getElementById('uploadInput');
+const uploadStatus = document.getElementById('uploadStatus');
+const documentsList = document.getElementById('documentsList');
+
 // ===== State =====
 let currentUser = null;
 let currentToken = null;
@@ -65,10 +71,14 @@ function setupAuthListeners() {
 
             messageInput.disabled = false;
             sendBtn.disabled = false;
-            messageInput.placeholder = "Ask a question about ClearPath...";
+            messageInput.placeholder = "Ask a question about your documents...";
+
+            // Show documents section now that user is signed in
+            documentsSection.style.display = 'block';
 
             // Load sidebar data
             await loadConversations();
+            await loadDocuments();
         } else {
             // User is signed out
             currentUser = null;
@@ -79,6 +89,10 @@ function setupAuthListeners() {
             messageInput.disabled = true;
             sendBtn.disabled = true;
             messageInput.placeholder = "Sign in to ask a question...";
+
+            documentsSection.style.display = 'none';
+            documentsList.innerHTML = '';
+            uploadStatus.textContent = '';
 
             conversationsList.innerHTML = '';
             startNewConversation();
@@ -370,6 +384,89 @@ async function deleteConversation(convId) {
 }
 
 newChatBtn.addEventListener('click', startNewConversation);
+
+// ===== Documents (uploads) =====
+
+async function loadDocuments() {
+    try {
+        const res = await authenticatedFetch('/documents');
+        if (!res.ok) throw new Error("Failed to fetch documents");
+        const docs = await res.json();
+        renderDocuments(docs);
+    } catch (err) {
+        console.error("Load documents error:", err);
+    }
+}
+
+function renderDocuments(docs) {
+    documentsList.innerHTML = '';
+    if (!docs.length) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'opacity:0.6; font-style:italic;';
+        empty.textContent = 'No documents yet. Upload to start asking questions.';
+        documentsList.appendChild(empty);
+        return;
+    }
+    docs.forEach(d => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 6px; border-radius:4px; background:rgba(255,255,255,0.04);';
+        const name = document.createElement('span');
+        name.textContent = `📄 ${d.document}`;
+        name.title = `${d.chunks} chunks`;
+        name.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;';
+        const del = document.createElement('button');
+        del.textContent = '×';
+        del.title = 'Delete document';
+        del.style.cssText = 'background:transparent; border:none; color:inherit; opacity:0.6; cursor:pointer; font-size:16px; padding:0 4px;';
+        del.onclick = () => deleteDocument(d.document);
+        row.appendChild(name);
+        row.appendChild(del);
+        documentsList.appendChild(row);
+    });
+}
+
+async function deleteDocument(docName) {
+    if (!confirm(`Delete "${docName}" from your library?`)) return;
+    try {
+        const res = await authenticatedFetch(`/documents/${encodeURIComponent(docName)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error("Delete failed");
+        await loadDocuments();
+    } catch (err) {
+        console.error(err);
+        alert('Could not delete document.');
+    }
+}
+
+uploadBtn.addEventListener('click', () => uploadInput.click());
+
+uploadInput.addEventListener('change', async () => {
+    const file = uploadInput.files[0];
+    if (!file) return;
+    if (!currentToken && currentUser) currentToken = await getIdToken(currentUser);
+
+    uploadStatus.textContent = `Uploading "${file.name}"…`;
+    uploadBtn.disabled = true;
+
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/upload', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${currentToken}` },
+            body: fd
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `Upload failed (${res.status})`);
+        uploadStatus.textContent = `Indexed ${data.chunks_indexed} chunks from ${data.pages} pages.`;
+        await loadDocuments();
+    } catch (err) {
+        console.error(err);
+        uploadStatus.textContent = `Error: ${err.message}`;
+    } finally {
+        uploadBtn.disabled = false;
+        uploadInput.value = '';
+    }
+});
 
 // ===== Chat Interface =====
 

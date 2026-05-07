@@ -4,8 +4,43 @@ Preserves page numbers and document filenames for source tracking.
 """
 
 import os
-from typing import List, Dict
+from io import BytesIO
+from typing import List, Dict, Union
 from PyPDF2 import PdfReader
+
+
+def extract_text_from_bytes(data: bytes, document_name: str) -> List[Dict]:
+    """
+    Extract text from raw PDF bytes (e.g., an uploaded file).
+
+    Returns a list of dicts, one per page:
+    [{ "text": "...", "page": 1, "document": document_name }]
+    """
+    pages = []
+    try:
+        reader = PdfReader(BytesIO(data))
+        for i, page in enumerate(reader.pages):
+            text = page.extract_text()
+            if text and text.strip():
+                pages.append({
+                    "text": text.strip(),
+                    "page": i + 1,
+                    "document": document_name
+                })
+    except Exception as e:
+        raise ValueError(f"Failed to parse PDF '{document_name}': {e}")
+    return pages
+
+
+def extract_text_from_plain(data: bytes, document_name: str) -> List[Dict]:
+    """Treat the file as a single-page text document."""
+    try:
+        text = data.decode("utf-8", errors="ignore").strip()
+    except Exception as e:
+        raise ValueError(f"Failed to decode '{document_name}' as text: {e}")
+    if not text:
+        return []
+    return [{"text": text, "page": 1, "document": document_name}]
 
 
 def extract_text_from_pdf(pdf_path: str) -> List[Dict]:

@@ -31,37 +31,39 @@ class EmbeddingService:
         embeddings_list = [emb.tolist() for emb in embeddings]
         return embeddings_list
 
-    async def insert_chunks_to_db(self, chunks: List[Dict]):
+    async def insert_chunks_to_db(self, chunks: List[Dict], user_id: str = None):
         """
         Embed and save chunks to the PostgreSQL database via SQLAlchemy.
-        
+
         Args:
             chunks: List of chunk dicts from chunker.py:
                    [{'document': 'pricing.pdf', 'page': 1, 'text': '...'}]
+            user_id: If provided, scopes these chunks to a specific user
+                     (so retrieval can isolate per-user uploads).
         """
         if not chunks:
-            return
-            
+            return 0
+
         texts = [chunk["text"] for chunk in chunks]
         embeddings = self.generate_embeddings(texts)
-        
+
         chunk_objects = []
         for i, chunk in enumerate(chunks):
             chunk_obj = DocumentChunk(
+                user_id=user_id,
                 document_name=chunk["document"],
                 page=chunk["page"],
                 text_content=chunk["text"],
                 embedding=embeddings[i]
             )
             chunk_objects.append(chunk_obj)
-            
+
         async with AsyncSessionLocal() as db:
-            logger.info(f"Saving {len(chunk_objects)} chunks to database...")
-            # Optionally delete prior chunks for the same docs to avoid duplicates
-            # In a real app we'd do UPSERTs, but append is fine for this demo.
+            logger.info(f"Saving {len(chunk_objects)} chunks to database (user_id={user_id})...")
             db.add_all(chunk_objects)
             await db.commit()
             logger.info("Chunks successfully saved to PostgreSQL + pgvector.")
+        return len(chunk_objects)
 
 # Optional: Keep a script entry point to easily index files from CLI
 if __name__ == "__main__":

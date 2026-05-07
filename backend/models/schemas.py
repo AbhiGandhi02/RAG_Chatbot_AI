@@ -46,3 +46,16 @@ class QueryResponse(BaseModel):
     metadata: Metadata
     sources: List[Source]
     conversation_id: str
+
+
+class UploadResponse(BaseModel):
+    """Response body for POST /upload."""
+    document: str
+    chunks_indexed: int
+    pages: int
+
+
+class UserDocument(BaseModel):
+    """An uploaded document belonging to the current user."""
+    document: str
+    chunks: int

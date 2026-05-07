@@ -42,12 +42,13 @@ class Message(Base):
 
 class DocumentChunk(Base):
     __tablename__ = "document_chunks"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     document_name = Column(String, nullable=False, index=True)
     page = Column(Integer, nullable=False)
     text_content = Column(Text, nullable=False)
-    
+
     # 384 dimensions for sentence-transformers/all-MiniLM-L6-v2
     embedding = Column(Vector(384), nullable=False)
 

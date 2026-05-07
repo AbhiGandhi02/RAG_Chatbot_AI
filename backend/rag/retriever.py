@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict
 from sqlalchemy.future import select
-from sqlalchemy import text
+from sqlalchemy import text, or_
 from fastembed import TextEmbedding
 
 from backend.db.database import AsyncSessionLocal
@@ -25,31 +25,36 @@ class Retriever:
         embedding = list(self.model.embed([query]))
         return embedding[0].tolist()
         
-    async def retrieve_async(self, query: str, top_k: int = None, threshold: float = None) -> List[Dict]:
+    async def retrieve_async(self, query: str, top_k: int = None, threshold: float = None, user_id: str = None) -> List[Dict]:
         """
         Asynchronously retrieve the most relevant chunks.
-        
-        Uses inner product (<#>) which is equivalent to cosine similarity for normalized vectors.
-        Because distance = 1 - similarity, inner product distance works where lower is more similar.
-        For pgvector inner product (<#>), lower distance means higher similarity.
-        We want to return chunks where similarity >= threshold.
+
+        Search scope:
+          - Always include the default/global corpus (chunks with user_id IS NULL),
+            i.e. the pre-loaded ClearPath PDFs from `python -m backend.rag.embeddings`.
+          - If `user_id` is provided, also include chunks owned by that user
+            (their uploaded documents).
         """
         top_k = top_k or TOP_K
         threshold = threshold or SIMILARITY_THRESHOLD
-        
+
         query_embedding = self.embed_query(query)
-        
+
         relevant_chunks = []
         async with AsyncSessionLocal() as db:
-            # For cosine similarity in pgvector, `<=>` returns the cosine distance (1 - cosine_similarity).
-            # So if we want similarity >= 0.3, it means distance <= 0.7
-            
-            # Using SQLAlchemy pgvector integration:
-            result = await db.execute(
+            stmt = (
                 select(DocumentChunk, DocumentChunk.embedding.cosine_distance(query_embedding).label("cos_dist"))
                 .order_by(DocumentChunk.embedding.cosine_distance(query_embedding))
                 .limit(top_k)
             )
+            if user_id is not None:
+                stmt = stmt.filter(
+                    or_(
+                        DocumentChunk.user_id == user_id,
+                        DocumentChunk.user_id.is_(None),
+                    )
+                )
+            result = await db.execute(stmt)
             
             rows = result.all()
             for chunk_obj, dist in rows:
@@ -69,24 +74,21 @@ class Retriever:
                     
         return relevant_chunks
         
-    def retrieve(self, query: str, top_k: int = None, threshold: float = None) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = None, threshold: float = None, user_id: str = None) -> List[Dict]:
         """Synchronous wrapper for retrieve_async."""
         import asyncio
-        
-        # Check if an event loop is already running
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             loop = None
-            
+
         if loop and loop.is_running():
-            # If we're already in an async context, we can't run asyncio.run()
-            # This is a temporary bridging if main.py caller is not awaited
             import nest_asyncio
             nest_asyncio.apply()
-            return asyncio.run(self.retrieve_async(query, top_k, threshold))
+            return asyncio.run(self.retrieve_async(query, top_k, threshold, user_id))
         else:
-            return asyncio.run(self.retrieve_async(query, top_k, threshold))
+            return asyncio.run(self.retrieve_async(query, top_k, threshold, user_id))
             
     def build_context(self, chunks: List[Dict]) -> str:
         """Build context string from retrieved chunks for the LLM prompt."""

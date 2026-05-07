@@ -9,24 +9,33 @@ import logging
 import json
 import os
 from contextlib import asynccontextmanager
+from typing import List
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import func, delete
 
-from backend.db.database import get_db, AsyncSessionLocal
-from backend.db.models import User
+from backend.db.database import get_db, AsyncSessionLocal, run_lightweight_migrations
+from backend.db.models import User, DocumentChunk
 from backend.db import crud
 from backend.auth.dependencies import get_current_user
 
-from backend.models.schemas import QueryRequest, QueryResponse, Metadata, Source, TokenUsage, ConversationUpdate
+from backend.models.schemas import (
+    QueryRequest, QueryResponse, Metadata, Source, TokenUsage, ConversationUpdate,
+    UploadResponse, UserDocument,
+)
 from backend.router.classifier import classify_query, create_routing_log
 from backend.rag.retriever import Retriever
+from backend.rag.pdf_parser import extract_text_from_bytes, extract_text_from_plain
+from backend.rag.chunker import chunk_pages
+from backend.rag.embeddings import EmbeddingService
 from backend.llm.groq_client import get_groq_client
 from backend.evaluator.evaluator import evaluate_response, get_warning_message
-from backend.config import PORT
+from backend.config import PORT, CHUNK_SIZE, CHUNK_OVERLAP
 
 # Configure logging
 logging.basicConfig(
@@ -38,30 +47,44 @@ logger = logging.getLogger(__name__)
 # Global instances (lazy initialized)
 retriever = None
 groq_client = None
+embedding_service = None
 
 
 @asynccontextmanager
 async def lifespan(app):
-    """Initialize retriever and LLM client on server startup."""
-    global retriever, groq_client
-    
-    logger.info("Initializing ClearPath RAG Chatbot...")
+    """Initialize retriever, embedder, LLM client and run migrations on startup."""
+    global retriever, groq_client, embedding_service
+
+    logger.info("Initializing RAG Chatbot...")
+
+    try:
+        await run_lightweight_migrations()
+        logger.info("Database migrations applied.")
+    except Exception as e:
+        logger.error(f"Migration failed (continuing): {e}")
+
     try:
         retriever = Retriever()
         logger.info("Retriever initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize retriever: {e}")
-        logger.error("Run 'python -m backend.rag.embeddings' first to build the index.")
         raise
-    
+
+    try:
+        embedding_service = EmbeddingService()
+        logger.info("Embedding service initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize embedding service: {e}")
+        raise
+
     try:
         groq_client = get_groq_client()
         logger.info("Groq client initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize Groq client: {e}")
         raise
-    
-    logger.info("ClearPath RAG Chatbot ready!")
+
+    logger.info("RAG Chatbot ready!")
     yield
 
 
@@ -159,7 +182,7 @@ async def query(
         llm_result = groq_client.generate(question, context, model_used, conversation_history=history)
         evaluator_flags = []
     else:
-        retrieved_chunks = await retriever.retrieve_async(question)
+        retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
         chunks_retrieved = len(retrieved_chunks)
         context = retriever.build_context(retrieved_chunks)
         llm_result = groq_client.generate(question, context, model_used, conversation_history=history)
@@ -228,7 +251,7 @@ async def query_stream(
         retrieved_chunks = []
         context = "The user is greeting you. Respond warmly."
     else:
-        retrieved_chunks = await retriever.retrieve_async(question)
+        retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
         context = retriever.build_context(retrieved_chunks)
     
     sources = [{"document": c["document"], "page": c["page"], "relevance_score": c.get("relevance_score")} for c in retrieved_chunks]
@@ -354,6 +377,93 @@ async def delete_conversation_api(
     return {"status": "success"}
 
 
+# --- Document Upload (NotebookLM-style) ---
+
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB per file
+
+
+@app.post("/upload", response_model=UploadResponse)
+async def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Ingest a user-uploaded PDF or text file: parse → chunk → embed → store."""
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="Missing filename.")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 15 MB limit.")
+
+    lower = filename.lower()
+    try:
+        if lower.endswith(".pdf"):
+            pages = extract_text_from_bytes(data, filename)
+        elif lower.endswith(".txt") or lower.endswith(".md"):
+            pages = extract_text_from_plain(data, filename)
+        else:
+            raise HTTPException(status_code=415, detail="Only .pdf, .txt, .md files are supported.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not pages:
+        raise HTTPException(status_code=400, detail="No extractable text found in the document.")
+
+    chunks = chunk_pages(pages, CHUNK_SIZE, CHUNK_OVERLAP)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="Document produced no chunks after splitting.")
+
+    # Replace any prior chunks for the same filename so re-uploads stay clean
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            delete(DocumentChunk).where(
+                DocumentChunk.user_id == current_user.id,
+                DocumentChunk.document_name == filename,
+            )
+        )
+        await db.commit()
+
+    inserted = await embedding_service.insert_chunks_to_db(chunks, user_id=current_user.id)
+    return UploadResponse(document=filename, chunks_indexed=inserted, pages=len(pages))
+
+
+@app.get("/documents", response_model=List[UserDocument])
+async def list_user_documents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List documents the current user has uploaded, with chunk counts."""
+    result = await db.execute(
+        select(DocumentChunk.document_name, func.count(DocumentChunk.id))
+        .filter(DocumentChunk.user_id == current_user.id)
+        .group_by(DocumentChunk.document_name)
+        .order_by(DocumentChunk.document_name)
+    )
+    return [UserDocument(document=name, chunks=count) for name, count in result.all()]
+
+
+@app.delete("/documents/{document_name}")
+async def delete_user_document(
+    document_name: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all chunks for a single document the current user uploaded."""
+    result = await db.execute(
+        delete(DocumentChunk).where(
+            DocumentChunk.user_id == current_user.id,
+            DocumentChunk.document_name == document_name,
+        )
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return {"status": "success", "document": document_name, "chunks_deleted": result.rowcount}
+
+
 # --- Frontend & Health ---
 
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
@@ -370,6 +480,36 @@ async def serve_frontend():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/debug/status")
+async def debug_status():
+    """Diagnostic endpoint to check Firebase and DB status on deployment."""
+    import firebase_admin
+    status = {
+        "firebase_initialized": bool(firebase_admin._apps),
+        "firebase_app_count": len(firebase_admin._apps),
+    }
+    
+    # Check DB connectivity
+    try:
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import text
+            result = await db.execute(text("SELECT 1"))
+            status["db_connected"] = True
+            status["db_error"] = None
+    except Exception as e:
+        status["db_connected"] = False
+        status["db_error"] = str(e)
+    
+    # Check if serviceAccountKey.json paths exist
+    import os
+    paths_to_check = [
+        os.getenv("FIREBASE_CREDENTIALS", "not_set"),
+        "/etc/secrets/serviceAccountKey.json",
+    ]
+    status["credential_paths"] = {p: os.path.exists(p) for p in paths_to_check}
+    
+    return status
 
 if __name__ == "__main__":
     import uvicorn
