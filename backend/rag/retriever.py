@@ -94,10 +94,13 @@ class Retriever:
         """Build context string from retrieved chunks for the LLM prompt."""
         if not chunks:
             return "No relevant documentation found for this query."
-        
+
         context_parts = []
         for i, chunk in enumerate(chunks, 1):
-            source = f"[Source: {chunk['document']}, Page {chunk['page']}]"
+            if chunk.get("source_type") == "web":
+                source = f"[Web Source: {chunk.get('document', 'unknown')}]"
+            else:
+                source = f"[Source: {chunk['document']}, Page {chunk['page']}]"
             context_parts.append(f"--- Context {i} {source} ---\n{chunk['text']}")
-        
+
         return "\n\n".join(context_parts)

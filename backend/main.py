@@ -33,9 +33,10 @@ from backend.rag.retriever import Retriever
 from backend.rag.pdf_parser import extract_text_from_bytes, extract_text_from_plain
 from backend.rag.chunker import chunk_pages
 from backend.rag.embeddings import EmbeddingService
+from backend.rag.corrective_rag import corrective_retrieve
 from backend.llm.groq_client import get_groq_client
 from backend.evaluator.evaluator import evaluate_response, get_warning_message
-from backend.config import PORT, CHUNK_SIZE, CHUNK_OVERLAP
+from backend.config import PORT, CHUNK_SIZE, CHUNK_OVERLAP, CRAG_ENABLED
 
 # Configure logging
 logging.basicConfig(
@@ -175,6 +176,7 @@ async def query(
     
     history = await get_formatted_history(db, conv.id)
     
+    crag_info = None
     if is_greeting:
         retrieved_chunks = []
         chunks_retrieved = 0
@@ -182,18 +184,30 @@ async def query(
         llm_result = groq_client.generate(question, context, model_used, conversation_history=history)
         evaluator_flags = []
     else:
-        retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
+        if CRAG_ENABLED:
+            crag_result = await corrective_retrieve(
+                retriever, groq_client, question, user_id=current_user.id
+            )
+            retrieved_chunks = crag_result["chunks"]
+            crag_info = {
+                "action": crag_result["action"],
+                "rewritten_query": crag_result["rewritten_query"],
+                "web_results": crag_result["web_results"],
+                "grades": [c.get("grade") for c in crag_result["graded_chunks"]],
+            }
+        else:
+            retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
         chunks_retrieved = len(retrieved_chunks)
         context = retriever.build_context(retrieved_chunks)
         llm_result = groq_client.generate(question, context, model_used, conversation_history=history)
         evaluator_flags = evaluate_response(llm_result["answer"], chunks_retrieved, retrieved_chunks)
-    
+
     answer = llm_result["answer"]
-    
+
     warning = get_warning_message(evaluator_flags)
     if warning:
         answer = f"{warning}\n\n{answer}"
-    
+
     msg_metadata = {
         "model_used": model_used,
         "classification": classification,
@@ -201,7 +215,8 @@ async def query(
         "latency_ms": llm_result["latency_ms"],
         "chunks_retrieved": chunks_retrieved,
         "evaluator_flags": evaluator_flags,
-        "sources": [{"document": c["document"], "page": c["page"], "relevance_score": c.get("relevance_score")} for c in retrieved_chunks]
+        "sources": [{"document": c["document"], "page": c["page"], "relevance_score": c.get("relevance_score"), "source_type": c.get("source_type")} for c in retrieved_chunks],
+        "crag": crag_info,
     }
     
     # Save the new turn to the DB
@@ -247,15 +262,28 @@ async def query_stream(
     
     history = await get_formatted_history(db, conv.id)
     
+    crag_info = None
     if is_greeting:
         retrieved_chunks = []
         context = "The user is greeting you. Respond warmly."
     else:
-        retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
+        if CRAG_ENABLED:
+            crag_result = await corrective_retrieve(
+                retriever, groq_client, question, user_id=current_user.id
+            )
+            retrieved_chunks = crag_result["chunks"]
+            crag_info = {
+                "action": crag_result["action"],
+                "rewritten_query": crag_result["rewritten_query"],
+                "web_results": crag_result["web_results"],
+                "grades": [c.get("grade") for c in crag_result["graded_chunks"]],
+            }
+        else:
+            retrieved_chunks = await retriever.retrieve_async(question, user_id=current_user.id)
         context = retriever.build_context(retrieved_chunks)
-    
-    sources = [{"document": c["document"], "page": c["page"], "relevance_score": c.get("relevance_score")} for c in retrieved_chunks]
-    
+
+    sources = [{"document": c["document"], "page": c["page"], "relevance_score": c.get("relevance_score"), "source_type": c.get("source_type")} for c in retrieved_chunks]
+
     async def event_generator():
         full_answer = ""
         meta_event = {
@@ -264,7 +292,8 @@ async def query_stream(
             "model_used": model_used,
             "chunks_retrieved": len(retrieved_chunks),
             "sources": sources,
-            "conversation_id": conv.id
+            "conversation_id": conv.id,
+            "crag": crag_info,
         }
         yield f"data: {json.dumps(meta_event)}\n\n"
         
@@ -285,7 +314,8 @@ async def query_stream(
                     "latency_ms": chunk["latency_ms"],
                     "chunks_retrieved": len(retrieved_chunks),
                     "evaluator_flags": flags,
-                    "sources": sources
+                    "sources": sources,
+                    "crag": crag_info,
                 }
                 # Save to DB inside the generator using its own session context
                 async with AsyncSessionLocal() as stream_db:

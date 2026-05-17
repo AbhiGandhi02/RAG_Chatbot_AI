@@ -30,3 +30,11 @@ FAISS_INDEX_PATH = os.path.join(DATA_DIR, "faiss_index")
 # Embedding Model
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
+
+# Corrective RAG (CRAG)
+#   When enabled, retrieved chunks are graded for relevance by a fast LLM,
+#   and the pipeline falls back to a web search (with a rewritten query)
+#   when local retrieval is insufficient.
+CRAG_ENABLED = os.getenv("CRAG_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+CRAG_GRADER_MODEL = "llama-3.1-8b-instant"
+CRAG_WEB_MAX_RESULTS = 5
