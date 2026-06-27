@@ -12,3 +12,6 @@ build/
 
 # Firebase Admin Credentials
 serviceAccountKey.json
+
+# Local guides
+INTERVIEW_GUIDE.md

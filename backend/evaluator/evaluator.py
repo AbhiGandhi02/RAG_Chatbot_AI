@@ -83,13 +83,19 @@ def evaluate_response(
     # pgvector always returns top-k results even if irrelevant, so we also
     # check if all chunks have very low relevance scores. Threshold is intentionally
     # low (0.25) because short structured docs (CVs, etc.) often max out around 0.35–0.45.
+    # Web chunks from CRAG fallback carry relevance_score=None — treat them as valid
+    # context so they don't trigger a false no_context flag or a TypeError in max().
     effectively_no_context = False
     if chunks_retrieved == 0:
         effectively_no_context = True
     elif retrieved_chunks:
-        max_score = max((c.get("relevance_score", 0) for c in retrieved_chunks), default=0)
-        if max_score < 0.25:
-            effectively_no_context = True
+        has_web_chunks = any(c.get("source_type") == "web" for c in retrieved_chunks)
+        if has_web_chunks:
+            effectively_no_context = False
+        else:
+            max_score = max((c.get("relevance_score") or 0 for c in retrieved_chunks), default=0)
+            if max_score < 0.25:
+                effectively_no_context = True
     
     if effectively_no_context:
         flags.append("no_context")
